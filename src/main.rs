@@ -2,29 +2,32 @@
 #![warn(clippy::nursery)]
 #![warn(clippy::pedantic)]
 
-use std::net::SocketAddr;
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
-use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Mutex, broadcast, broadcast::Sender};
+use tokio::{
+    io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::{TcpListener, TcpStream},
+    sync::{Mutex, broadcast, broadcast::Sender},
+};
+
+use chrono::{DateTime, Utc};
 
 #[derive(Clone, Debug)]
 struct Client {
     nick: String,
     addr: SocketAddr,
+    connected_at: DateTime<Utc>,
 }
 
 impl Client {
-    const fn new(addr: SocketAddr) -> Self {
-        Self {
-            nick: String::new(),
-            addr,
-        }
+    fn new(addr: SocketAddr) -> Self {
+        let connected_at = chrono::Utc::now();
+
+        Self { nick: String::new(), addr, connected_at }
     }
 
-    fn set_nick(&mut self, nick: String) {
-        self.nick = nick;
+    fn set_nick(&mut self, nick: &str) {
+        self.nick = nick.to_string();
     }
 }
 
@@ -35,9 +38,7 @@ struct Clients {
 
 impl Clients {
     fn new() -> Self {
-        Self {
-            connections: Mutex::new(Vec::new()),
-        }
+        Self { connections: Mutex::new(Vec::new()) }
     }
 
     async fn add(&self, client: Client) {
@@ -52,10 +53,16 @@ impl Clients {
         connections.retain(|c| c.addr != addr);
     }
 
-    async fn check_nick(&self, nick: &String) -> bool {
+    async fn check_client(&self, addr: SocketAddr) -> bool {
         let connections = self.connections.lock().await;
 
-        connections.iter().any(|x| x.nick == *nick)
+        connections.iter().any(|c| c.addr == addr)
+    }
+
+    async fn check_nick(&self, nick: &str) -> bool {
+        let connections = self.connections.lock().await;
+
+        connections.iter().any(|c| c.nick == *nick)
     }
 }
 
@@ -82,9 +89,7 @@ async fn handle_client(
 
     println!("notice: client connected from {:?}", addr);
 
-    writer
-        .write_all(b"server: please enter your nick below\n")
-        .await?;
+    writer.write_all(b"server: please enter your nick below\n").await?;
 
     loop {
         let mut nick = String::new();
@@ -108,27 +113,29 @@ async fn handle_client(
                 writer.write_all(b"server: nick is too long\n").await?;
             } else {
                 if clients.check_nick(&nick).await == false {
-                    client.set_nick(nick);
+                    client.set_nick(&nick);
+
+                    clients.add(client.clone()).await;
+
+                    match tx.send(format!("server: {} has joined\n", client.nick)) {
+                        Ok(_) => {}
+                        Err(e) => println!("Unable to send line: {}", e),
+                    }
+
+                    writer.write_all(b"server: welcome to chat\n").await?;
+
                     break;
                 } else {
-                    writer
-                        .write_all(b"server: this nick is already taken\n")
-                        .await?;
+                    writer.write_all(b"server: nick is already taken\n").await?;
                 }
             }
         } else {
-            writer
-                .write_all(b"server: please enter a valid nick\n")
-                .await?;
+            writer.write_all(b"server: please enter a valid nick\n").await?;
         }
     }
 
-    clients.add(client.clone()).await;
-
-    match tx.send(format!("server: {} has joined the server!\n", client.nick)) {
-        Ok(_) => {}
-        Err(e) => println!("Unable to send line: {}", e),
-    }
+    // drain buffered messages for new client
+    while let Ok(_) = rx.try_recv() {}
 
     loop {
         let mut input = String::new();
@@ -136,15 +143,18 @@ async fn handle_client(
         tokio::select! {
             bytes = reader.read_line(&mut input) => {
                 if bytes.unwrap() == 0 {
+                    if clients.check_client(client.addr).await == true {
+                        match tx.send(format!("server: {} has left\n", client.nick)) {
+                            Ok(_) => {}
+                            Err(e) => println!("Unable to send line: {}", e),
+                        }
+
+                    }
+
                     clients.remove(addr).await;
 
                     println!("notice: client disconnected from {:?}", addr);
                     println!("{:?}", clients.connections);
-
-                    match tx.send(format!("server: {} has left the server!\n", client.nick)) {
-                        Ok(_) => {}
-                        Err(e) => println!("Unable to send line: {}", e),
-                    }
 
                     break Ok(());
                 }
@@ -172,14 +182,14 @@ async fn handle_client(
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let listener = TcpListener::bind("0.0.0.0:6667").await?;
-    let (tx, _) = broadcast::channel::<String>(32);
+    let (tx, _) = broadcast::channel::<String>(16);
     let clients = Arc::new(Clients::new());
 
     loop {
-        let (socket, addr) = listener.accept().await?;
+        let (stream, addr) = listener.accept().await?;
         let tx = tx.clone();
         let clients = Arc::clone(&clients);
 
-        tokio::spawn(async move { handle_client(socket, addr, tx, clients).await });
+        tokio::spawn(async move { handle_client(stream, addr, tx, clients).await });
     }
 }
