@@ -6,6 +6,8 @@ use tokio::{
     sync::broadcast::Sender,
 };
 
+use tracing::{error, info};
+
 use crate::lib::client;
 
 pub async fn set_nick(
@@ -32,7 +34,7 @@ pub async fn set_nick(
 
                 match tx.send(format!("server: {} has joined\n", client.nick)) {
                     Ok(_) => {}
-                    Err(e) => println!("Unable to send line: {}", e),
+                    Err(e) => error!("unable to send line: {}", e),
                 }
 
                 writer.write_all(b"server: welcome to chat\n").await?;
@@ -73,7 +75,7 @@ pub async fn change_nick(
 
                 match tx.send(format!("server: {} is now {}\n", old_nick, client.nick)) {
                     Ok(_) => {}
-                    Err(e) => println!("Unable to send line: {}", e),
+                    Err(e) => error!("unable to send line: {}", e),
                 }
             } else {
                 writer.write_all(b"server: nick is already taken\n").await?;
@@ -94,14 +96,14 @@ pub async fn shutdown(
     if clients.check_client(client.addr).await {
         match tx.send(format!("server: {} has left\n", client.nick)) {
             Ok(_) => {}
-            Err(e) => println!("Unable to send line: {}", e),
+            Err(e) => error!("unable to send line: {}", e),
         }
     }
 
     clients.remove_by_addr(client.addr).await;
 
-    println!("notice: client disconnected from {:?}", client.addr);
-    println!("{:?}", clients.connections);
+    info!("client disconnected from {}", client.addr);
+    info!("clients connected: {:?}", clients.connections);
 
     Ok(())
 }

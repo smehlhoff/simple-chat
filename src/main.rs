@@ -5,6 +5,7 @@
 mod lib {
     pub mod client;
     pub mod commands;
+    pub mod config;
     pub mod connection;
     pub mod utils;
 }
@@ -17,13 +18,26 @@ use tokio::{
     sync::broadcast,
 };
 
-use lib::{client, connection};
+use tracing::{error, info};
+
+use lib::{client, config, connection};
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let listener = TcpListener::bind("0.0.0.0:6667").await?;
+    tracing_subscriber::fmt::init();
+
+    let config = match config::Config::load_config() {
+        Ok(config) => config,
+        Err(e) => {
+            error!("error with config file: {}", e);
+            panic!("error with config file: {}", e)
+        }
+    };
+    let listener = TcpListener::bind(&config.server_address).await?;
     let (tx, _) = broadcast::channel::<String>(32);
     let clients = Arc::new(client::Clients::new());
+
+    info!("TCP server running: {}", config.server_address);
 
     loop {
         let (stream, addr) = listener.accept().await?;

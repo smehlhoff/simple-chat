@@ -6,6 +6,8 @@ use tokio::{
     sync::broadcast::Sender,
 };
 
+use tracing::{error, info};
+
 use crate::lib::{client, commands, utils};
 
 enum LineResult {
@@ -25,7 +27,7 @@ pub async fn handle_client(
     let mut reader = BufReader::new(reader);
     let mut client = client::Client::new(addr);
 
-    println!("notice: client connected from {:?}", addr);
+    info!("client connected from {}", addr);
 
     writer.write_all(b"server: please enter your nick below\n").await?;
 
@@ -64,7 +66,7 @@ pub async fn handle_client(
                     LineResult::Broadcast(line) => {
                         match tx.send(line) {
                             Ok(_) => {},
-                            Err(e) => println!("Unable to send line: {}", e)
+                            Err(e) => error!("unable to send line: {}", e)
                         }
                     }
                     LineResult::Shutdown => {
@@ -79,7 +81,7 @@ pub async fn handle_client(
             msg = rx.recv() => {
                 match msg {
                     Ok(msg) => writer.write_all(msg.as_bytes()).await?,
-                    Err(e) => println!("Unable to read line: {}", e)
+                    Err(e) => error!("unable to send line: {}", e)
                 }
             }
         }
