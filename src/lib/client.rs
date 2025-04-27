@@ -45,6 +45,12 @@ impl Clients {
         connections.retain(|c| c.addr != addr);
     }
 
+    pub async fn clients(&self) -> Vec<String> {
+        let connections = self.connections.lock().await;
+
+        connections.iter().map(|c| c.nick.clone()).collect()
+    }
+
     pub async fn check_client(&self, addr: SocketAddr) -> bool {
         let connections = self.connections.lock().await;
 

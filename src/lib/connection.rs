@@ -2,11 +2,16 @@ use std::{net::SocketAddr, sync::Arc};
 
 use tokio::{
     io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::TcpStream,
+    net::{TcpStream, tcp::OwnedWriteHalf},
     sync::broadcast::Sender,
 };
 
 use crate::lib::{client, commands};
+
+enum LineResult {
+    Broadcast(String),
+    NoBroadcast,
+}
 
 pub async fn handle_client(
     stream: TcpStream,
@@ -38,7 +43,7 @@ pub async fn handle_client(
 
         nick = nick.trim().to_string();
 
-        if nick.is_ascii() && !nick.is_empty() {
+        if nick.is_ascii() && !nick.is_empty() && !nick.contains('/') {
             if nick.len() < 3 {
                 writer.write_all(b"server: nick is too short\n").await?;
             } else if nick.len() > 15 {
@@ -66,7 +71,7 @@ pub async fn handle_client(
         }
     }
 
-    // drain buffered messages for new client
+    // drain buffered messages for new client, which will prevent returning old join messages
     while let Ok(_) = rx.try_recv() {}
 
     loop {
@@ -91,13 +96,16 @@ pub async fn handle_client(
                     break Ok(());
                 }
 
-                let line = handle_line(&client.nick, &input).await?;
+                let line = handle_line(&mut writer, &clients, &mut client, &input).await?;
 
-                if input.len() > 1 {
-                    match tx.send(line.to_string()) {
-                        Ok(_) => {},
-                        Err(e) => println!("Unable to send line: {}", e)
+                match line {
+                    LineResult::Broadcast(line) => {
+                        match tx.send(line) {
+                            Ok(_) => {},
+                            Err(e) => println!("Unable to send line: {}", e)
                         }
+                    }
+                    LineResult::NoBroadcast => {}
                 }
             }
 
@@ -111,17 +119,30 @@ pub async fn handle_client(
     }
 }
 
-async fn handle_line(nick: &str, line: &str) -> io::Result<String> {
-    let tokens: Vec<&str> = line.trim().split(" ").collect();
+async fn handle_line(
+    writer: &mut OwnedWriteHalf,
+    clients: &Arc<client::Clients>,
+    client: &mut client::Client,
+    line: &str,
+) -> io::Result<LineResult> {
+    let tokens: Vec<&str> = line.trim().split(' ').collect();
 
-    match tokens[0] {
-        "/help" => commands::help(),
-        _ => {}
+    if let Some(token) = tokens.first() {
+        if token.starts_with('/') {
+            if token.to_lowercase().contains("/help") {
+                commands::help(writer).await?;
+            } else if token.to_lowercase().contains("/users") {
+                commands::users(writer, clients).await?;
+            } else if token.to_lowercase().contains("/nick") {
+                commands::nick(writer, client).await?;
+            } else {
+                writer.write_all(b"server: not a valid command\n").await?;
+            }
+            Ok(LineResult::NoBroadcast)
+        } else {
+            Ok(LineResult::Broadcast(format!("{}: {}", client.nick, line)))
+        }
+    } else {
+        Ok(LineResult::NoBroadcast)
     }
-
-    // println!("{:?}", tokens);
-
-    let line = format!("{}: {}", nick, line);
-
-    Ok(line)
 }
