@@ -44,7 +44,7 @@ pub async fn handle_client(
         }
     }
 
-    // drain buffered messages for new client, which will prevent returning old join messages
+    // drain buffered messages for new client, which will prevent returning old messages
     while rx.try_recv().is_ok() {}
 
     loop {
