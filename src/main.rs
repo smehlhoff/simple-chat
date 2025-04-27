@@ -24,7 +24,16 @@ use lib::{client, config, connection};
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    tracing_subscriber::fmt::init();
+    let subscriber = tracing_subscriber::fmt()
+        .compact()
+        .with_file(true)
+        .with_line_number(true)
+        .with_thread_ids(true)
+        .with_target(true)
+        .with_max_level(tracing::Level::DEBUG)
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber).unwrap();
 
     let config = match config::Config::load_config() {
         Ok(config) => config,

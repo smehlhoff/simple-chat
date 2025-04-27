@@ -6,7 +6,7 @@ use tokio::{
     sync::broadcast::Sender,
 };
 
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::lib::{client, commands, utils};
 
@@ -64,6 +64,8 @@ pub async fn handle_client(
 
                 match line {
                     LineResult::Broadcast(line) => {
+                        debug!("{}", line);
+
                         match tx.send(line) {
                             Ok(_) => {},
                             Err(e) => error!("unable to send line: {}", e)
