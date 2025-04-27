@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 pub struct Client {
     pub nick: String,
     pub addr: SocketAddr,
+    #[allow(dead_code)]
     pub connected_at: DateTime<Utc>,
 }
 
@@ -39,10 +40,16 @@ impl Clients {
         connections.push(client);
     }
 
-    pub async fn remove(&self, addr: SocketAddr) {
+    pub async fn remove_by_addr(&self, addr: SocketAddr) {
         let mut connections = self.connections.lock().await;
 
         connections.retain(|c| c.addr != addr);
+    }
+
+    pub async fn remove_by_nick(&self, nick: &str) {
+        let mut connections = self.connections.lock().await;
+
+        connections.retain(|c| c.nick != nick);
     }
 
     pub async fn clients(&self) -> Vec<String> {
@@ -60,6 +67,6 @@ impl Clients {
     pub async fn check_nick(&self, nick: &str) -> bool {
         let connections = self.connections.lock().await;
 
-        connections.iter().any(|c| c.nick == *nick)
+        connections.iter().any(|c| c.nick == nick)
     }
 }

@@ -6,10 +6,11 @@ use tokio::{
     sync::broadcast::Sender,
 };
 
-use crate::lib::{client, commands};
+use crate::lib::{client, commands, utils};
 
 enum LineResult {
     Broadcast(String),
+    Shutdown,
     NoBroadcast,
 }
 
@@ -33,46 +34,18 @@ pub async fn handle_client(
         let bytes = reader.read_line(&mut nick).await?;
 
         if bytes == 0 {
-            clients.remove(addr).await;
+            utils::shutdown(&tx, &clients, client).await?;
 
-            println!("notice: client disconnected from {:?}", addr);
-            println!("{:?}", clients.connections);
-
-            break;
+            return Ok(());
         }
 
-        nick = nick.trim().to_string();
-
-        if nick.is_ascii() && !nick.is_empty() && !nick.contains('/') {
-            if nick.len() < 3 {
-                writer.write_all(b"server: nick is too short\n").await?;
-            } else if nick.len() > 15 {
-                writer.write_all(b"server: nick is too long\n").await?;
-            } else {
-                if clients.check_nick(&nick).await == false {
-                    client.set_nick(&nick);
-
-                    clients.add(client.clone()).await;
-
-                    match tx.send(format!("server: {} has joined\n", client.nick)) {
-                        Ok(_) => {}
-                        Err(e) => println!("Unable to send line: {}", e),
-                    }
-
-                    writer.write_all(b"server: welcome to chat\n").await?;
-
-                    break;
-                } else {
-                    writer.write_all(b"server: nick is already taken\n").await?;
-                }
-            }
-        } else {
-            writer.write_all(b"server: please enter a valid nick\n").await?;
+        if utils::set_nick(&mut writer, &tx, &clients, &mut client, &nick).await? {
+            break;
         }
     }
 
     // drain buffered messages for new client, which will prevent returning old join messages
-    while let Ok(_) = rx.try_recv() {}
+    while rx.try_recv().is_ok() {}
 
     loop {
         let mut input = String::new();
@@ -80,23 +53,12 @@ pub async fn handle_client(
         tokio::select! {
             bytes = reader.read_line(&mut input) => {
                 if bytes.unwrap() == 0 {
-                    if clients.check_client(client.addr).await == true {
-                        match tx.send(format!("server: {} has left\n", client.nick)) {
-                            Ok(_) => {}
-                            Err(e) => println!("Unable to send line: {}", e),
-                        }
+                    utils::shutdown(&tx, &clients, client).await?;
 
-                    }
-
-                    clients.remove(addr).await;
-
-                    println!("notice: client disconnected from {:?}", addr);
-                    println!("{:?}", clients.connections);
-
-                    break Ok(());
+                    return Ok(());
                 }
 
-                let line = handle_line(&mut writer, &clients, &mut client, &input).await?;
+                let line = handle_line(&mut writer, &tx, &clients, &mut client, &input).await?;
 
                 match line {
                     LineResult::Broadcast(line) => {
@@ -104,6 +66,11 @@ pub async fn handle_client(
                             Ok(_) => {},
                             Err(e) => println!("Unable to send line: {}", e)
                         }
+                    }
+                    LineResult::Shutdown => {
+                        utils::shutdown(&tx, &clients, client).await?;
+
+                        return Ok(());
                     }
                     LineResult::NoBroadcast => {}
                 }
@@ -121,6 +88,7 @@ pub async fn handle_client(
 
 async fn handle_line(
     writer: &mut OwnedWriteHalf,
+    tx: &Sender<String>,
     clients: &Arc<client::Clients>,
     client: &mut client::Client,
     line: &str,
@@ -129,16 +97,21 @@ async fn handle_line(
 
     if let Some(token) = tokens.first() {
         if token.starts_with('/') {
-            if token.to_lowercase().contains("/help") {
+            if token.to_lowercase() == "/help" {
                 commands::help(writer).await?;
-            } else if token.to_lowercase().contains("/users") {
+                Ok(LineResult::NoBroadcast)
+            } else if token.to_lowercase() == "/users" {
                 commands::users(writer, clients).await?;
-            } else if token.to_lowercase().contains("/nick") {
-                commands::nick(writer, client).await?;
+                Ok(LineResult::NoBroadcast)
+            } else if token.to_lowercase() == "/nick" {
+                commands::nick(writer, tx, clients, client, tokens).await?;
+                Ok(LineResult::NoBroadcast)
+            } else if token.to_lowercase() == "/quit" {
+                Ok(LineResult::Shutdown)
             } else {
-                writer.write_all(b"server: not a valid command\n").await?;
+                writer.write_all(b"server: invalid command\n").await?;
+                Ok(LineResult::NoBroadcast)
             }
-            Ok(LineResult::NoBroadcast)
         } else {
             Ok(LineResult::Broadcast(format!("{}: {}", client.nick, line)))
         }

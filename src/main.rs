@@ -6,6 +6,7 @@ mod lib {
     pub mod client;
     pub mod commands;
     pub mod connection;
+    pub mod utils;
 }
 
 use std::sync::Arc;
