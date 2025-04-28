@@ -4,6 +4,8 @@ A pseudo irc chat server using Tokio crate.
 
 Leveraging `tracing-loki` for centralized logging with loki and grafana.
 
+![alt text](chat.png)
+
 ![alt text](grafana_screenshot.png)
 
 ## Install
