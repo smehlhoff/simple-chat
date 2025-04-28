@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
+use crate::lib::client;
+
 use tokio::{
     io::{self, AsyncWriteExt},
     net::tcp::OwnedWriteHalf,
     sync::broadcast::Sender,
 };
-
 use tracing::{error, info};
-
-use crate::lib::client;
+use uuid::Uuid;
 
 pub async fn set_nick(
     writer: &mut OwnedWriteHalf,
@@ -27,14 +27,16 @@ pub async fn set_nick(
             writer.write_all(b"server: nick is too long\n").await?;
             Ok(false)
         } else {
-            if !clients.check_nick(&nick).await {
+            if clients.check_nick(&nick).await == false {
                 client.set_nick(&nick);
 
                 clients.add(client.clone()).await;
 
+                info!(uuid=?Uuid::new_v4(), ip=?client.addr, nick=?client.nick, "client joined as {}", client.nick);
+
                 match tx.send(format!("server: {} has joined\n", client.nick)) {
                     Ok(_) => {}
-                    Err(e) => error!("unable to send line: {}", e),
+                    Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send line: {}", e),
                 }
 
                 writer.write_all(b"server: welcome to chat\n").await?;
@@ -65,7 +67,7 @@ pub async fn change_nick(
         } else if nick.len() > 15 {
             writer.write_all(b"server: nick is too long\n").await?;
         } else {
-            if !clients.check_nick(&nick).await {
+            if clients.check_nick(&nick).await == false {
                 let old_nick = client.nick.clone();
 
                 client.set_nick(&nick);
@@ -75,7 +77,7 @@ pub async fn change_nick(
 
                 match tx.send(format!("server: {} is now {}\n", old_nick, client.nick)) {
                     Ok(_) => {}
-                    Err(e) => error!("unable to send line: {}", e),
+                    Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send line: {}", e),
                 }
             } else {
                 writer.write_all(b"server: nick is already taken\n").await?;
@@ -96,14 +98,17 @@ pub async fn shutdown(
     if clients.check_client(client.addr).await {
         match tx.send(format!("server: {} has left\n", client.nick)) {
             Ok(_) => {}
-            Err(e) => error!("unable to send line: {}", e),
+            Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send line: {}", e),
         }
     }
 
     clients.remove_by_addr(client.addr).await;
 
-    info!("client disconnected from {}", client.addr);
-    info!("clients connected: {:?}", clients.connections);
+    if client.nick.is_empty() == false {
+        info!(uuid=?Uuid::new_v4(), ip=?client.addr, nick=?client.nick, "client disconnected");
+    } else {
+        info!(uuid=?Uuid::new_v4(), ip=?client.addr, "client disconnected");
+    }
 
     Ok(())
 }

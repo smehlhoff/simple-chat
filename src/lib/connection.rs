@@ -1,14 +1,14 @@
 use std::{net::SocketAddr, sync::Arc};
 
+use crate::lib::{client, commands, utils};
+
 use tokio::{
     io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{TcpStream, tcp::OwnedWriteHalf},
     sync::broadcast::Sender,
 };
-
-use tracing::{debug, error, info};
-
-use crate::lib::{client, commands, utils};
+use tracing::{error, info};
+use uuid::Uuid;
 
 enum LineResult {
     Broadcast(String),
@@ -27,8 +27,6 @@ pub async fn handle_client(
     let mut reader = BufReader::new(reader);
     let mut client = client::Client::new(addr);
 
-    info!("client connected from {}", addr);
-
     writer.write_all(b"server: please enter your nick below\n").await?;
 
     loop {
@@ -40,6 +38,8 @@ pub async fn handle_client(
 
             return Ok(());
         }
+
+        info!(uuid=?Uuid::new_v4(), ip=?client.addr, nick=?nick.trim(), "client entered nick as {}", nick);
 
         if utils::set_nick(&mut writer, &tx, &clients, &mut client, &nick).await? {
             break;
@@ -64,11 +64,9 @@ pub async fn handle_client(
 
                 match line {
                     LineResult::Broadcast(line) => {
-                        debug!("{}", line);
-
                         match tx.send(line) {
                             Ok(_) => {},
-                            Err(e) => error!("unable to send line: {}", e)
+                            Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send line: {}", e)
                         }
                     }
                     LineResult::Shutdown => {
@@ -83,7 +81,7 @@ pub async fn handle_client(
             msg = rx.recv() => {
                 match msg {
                     Ok(msg) => writer.write_all(msg.as_bytes()).await?,
-                    Err(e) => error!("unable to send line: {}", e)
+                    Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send line: {}", e)
                 }
             }
         }
@@ -97,12 +95,14 @@ async fn handle_line(
     client: &mut client::Client,
     line: &str,
 ) -> io::Result<LineResult> {
+    info!(uuid=?Uuid::new_v4(), ip=?client.addr, nick=?client.nick, "client typed {}", line);
+
     let tokens: Vec<&str> = line.trim().split(' ').collect();
 
     if let Some(token) = tokens.first() {
         if token.starts_with('/') {
-            if token.to_lowercase() == "/help" {
-                commands::help(writer).await?;
+            if token.to_lowercase() == "/time" {
+                commands::time(writer).await?;
                 Ok(LineResult::NoBroadcast)
             } else if token.to_lowercase() == "/users" {
                 commands::users(writer, clients).await?;

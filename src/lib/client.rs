@@ -1,8 +1,7 @@
 use std::net::SocketAddr;
 
-use tokio::sync::Mutex;
-
 use chrono::{DateTime, Utc};
+use tokio::sync::Mutex;
 
 #[derive(Clone, Debug)]
 pub struct Client {

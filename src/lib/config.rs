@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
+    pub loki_address: String,
     pub server_address: String,
 }
 

@@ -1,16 +1,19 @@
 use std::sync::Arc;
 
+use crate::lib::{client, utils};
+
 use tokio::{
     io::{self, AsyncWriteExt},
     net::tcp::OwnedWriteHalf,
     sync::broadcast::Sender,
 };
 
-use crate::lib::{client, utils};
+pub async fn time(writer: &mut OwnedWriteHalf) -> io::Result<()> {
+    let now = chrono::Utc::now().format("%Y-%m-%d %H:%M");
 
-#[allow(unused_variables)]
-pub async fn help(writer: &mut OwnedWriteHalf) -> io::Result<()> {
-    todo!()
+    writer.write_all(format!("server: current time is {}\n", now).as_bytes()).await?;
+
+    Ok(())
 }
 
 pub async fn users(writer: &mut OwnedWriteHalf, clients: &Arc<client::Clients>) -> io::Result<()> {
