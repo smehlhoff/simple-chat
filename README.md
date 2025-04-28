@@ -6,7 +6,7 @@ Leveraging `tracing-loki` for centralized logging with loki and grafana.
 
 ![alt text](chat.png)
 
-![alt text](grafana_screenshot.png)
+![alt text](grafana.png)
 
 ## Install
 
