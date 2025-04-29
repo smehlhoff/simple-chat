@@ -2,7 +2,7 @@
 
 A pseudo irc chat server using Tokio crate.
 
-Leveraging `tracing-loki` for centralized logging with loki and grafana.
+Leverages `tracing-loki` for centralized logging with loki and grafana.
 
 ![alt text](chat.png)
 
@@ -14,7 +14,13 @@ TBD
 
 ## Usage
 
-TBD
+```console
+/time               # return server time
+/users              # return list of online users
+/nick <new nick>    # change nick
+/seen <nick>        # return nick last seen date (i.e., when nick last sent a message)
+/quit               # disconnect from server
+```
 
 ## Contributing
 
