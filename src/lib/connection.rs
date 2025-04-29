@@ -39,7 +39,12 @@ pub async fn handle_client(
             return Ok(());
         }
 
-        info!(uuid=?Uuid::new_v4(), ip=?client.addr, nick=?nick.trim(), "client entered nick as {}", nick);
+        info!(
+            uuid=?Uuid::new_v4(),
+            ip=?client.addr,
+            nick=?nick.trim(),
+            "client entered nick as: {}", nick
+        );
 
         if utils::set_nick(&mut writer, &tx, &clients, &mut client, &nick).await? {
             break;
@@ -95,28 +100,37 @@ async fn handle_line(
     client: &mut client::Client,
     line: &str,
 ) -> io::Result<LineResult> {
-    info!(uuid=?Uuid::new_v4(), ip=?client.addr, nick=?client.nick, "client typed {}", line);
+    info!(uuid=?Uuid::new_v4(), ip=?client.addr, nick=?client.nick, "client sent: {}", line);
 
     let tokens: Vec<&str> = line.trim().split(' ').collect();
 
     if let Some(token) = tokens.first() {
-        if token.starts_with('/') {
-            if token.to_lowercase() == "/time" {
+        let token = token.to_lowercase();
+
+        if token.is_empty() {
+            Ok(LineResult::NoBroadcast)
+        } else if token.starts_with('/') {
+            if token == "/time" {
                 commands::time(writer).await?;
                 Ok(LineResult::NoBroadcast)
-            } else if token.to_lowercase() == "/users" {
+            } else if token == "/users" {
                 commands::users(writer, clients).await?;
                 Ok(LineResult::NoBroadcast)
-            } else if token.to_lowercase() == "/nick" {
+            } else if token == "/nick" {
                 commands::nick(writer, tx, clients, client, tokens).await?;
                 Ok(LineResult::NoBroadcast)
-            } else if token.to_lowercase() == "/quit" {
+            } else if token == "/seen" {
+                commands::seen(writer, clients, tokens).await?;
+                Ok(LineResult::NoBroadcast)
+            } else if token == "/quit" {
                 Ok(LineResult::Shutdown)
             } else {
                 writer.write_all(b"server: invalid command\n").await?;
                 Ok(LineResult::NoBroadcast)
             }
         } else {
+            clients.set_last_seen(client.addr).await;
+
             Ok(LineResult::Broadcast(format!("{}: {}", client.nick, line)))
         }
     } else {

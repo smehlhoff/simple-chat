@@ -9,13 +9,12 @@ pub struct Client {
     pub addr: SocketAddr,
     #[allow(dead_code)]
     pub connected_at: DateTime<Utc>,
+    pub last_seen: Option<DateTime<Utc>>,
 }
 
 impl Client {
     pub fn new(addr: SocketAddr) -> Self {
-        let connected_at = chrono::Utc::now();
-
-        Self { nick: String::new(), addr, connected_at }
+        Self { nick: String::new(), addr, connected_at: chrono::Utc::now(), last_seen: None }
     }
 
     pub fn set_nick(&mut self, nick: &str) {
@@ -34,38 +33,36 @@ impl Clients {
     }
 
     pub async fn add(&self, client: Client) {
-        let mut connections = self.connections.lock().await;
-
-        connections.push(client);
+        self.connections.lock().await.push(client);
     }
 
     pub async fn remove_by_addr(&self, addr: SocketAddr) {
-        let mut connections = self.connections.lock().await;
-
-        connections.retain(|c| c.addr != addr);
+        self.connections.lock().await.retain(|c| c.addr != addr);
     }
 
     pub async fn remove_by_nick(&self, nick: &str) {
-        let mut connections = self.connections.lock().await;
-
-        connections.retain(|c| c.nick != nick);
+        self.connections.lock().await.retain(|c| c.nick != nick);
     }
 
-    pub async fn clients(&self) -> Vec<String> {
-        let connections = self.connections.lock().await;
-
-        connections.iter().map(|c| c.nick.clone()).collect()
+    pub async fn list_clients(&self) -> Vec<String> {
+        self.connections.lock().await.iter().map(|c| c.nick.clone()).collect()
     }
 
     pub async fn check_client(&self, addr: SocketAddr) -> bool {
-        let connections = self.connections.lock().await;
-
-        connections.iter().any(|c| c.addr == addr)
+        self.connections.lock().await.iter().any(|c| c.addr == addr)
     }
 
     pub async fn check_nick(&self, nick: &str) -> bool {
-        let connections = self.connections.lock().await;
+        self.connections.lock().await.iter().any(|c| c.nick == nick)
+    }
 
-        connections.iter().any(|c| c.nick == nick)
+    pub async fn retrieve_client(&self, target: &str) -> Option<Client> {
+        self.connections.lock().await.iter().find(|c| c.nick == target).cloned()
+    }
+
+    pub async fn set_last_seen(&self, addr: SocketAddr) {
+        if let Some(client) = self.connections.lock().await.iter_mut().find(|c| c.addr == addr) {
+            client.last_seen = Some(chrono::Utc::now());
+        }
     }
 }
