@@ -18,7 +18,7 @@ TBD
 /time               # return server time
 /users              # return list of online users
 /nick <new nick>    # change nick
-/seen <nick>        # return nick last seen date (i.e., when nick last sent a message)
+/seen <nick>        # return last seen date (i.e., when nick last sent a public message)
 /quit               # disconnect from server
 ```
 
