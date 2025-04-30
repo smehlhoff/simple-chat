@@ -1,8 +1,8 @@
 # simple-chat
 
-A pseudo irc chat server using Tokio crate.
+A pseudo irc chat server using `tokio` crate.
 
-Leverages `tracing-loki` for centralized logging with loki and grafana.
+Leverages `tracing-loki` crate for centralized logging with loki and grafana.
 
 ![alt text](chat.png)
 
