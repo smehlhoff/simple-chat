@@ -44,20 +44,20 @@ impl Clients {
         self.connections.lock().await.retain(|c| c.nick != nick);
     }
 
-    pub async fn list_clients(&self) -> Vec<String> {
-        self.connections.lock().await.iter().map(|c| c.nick.clone()).collect()
+    pub async fn retrieve_by_nick(&self, target: &str) -> Option<Client> {
+        self.connections.lock().await.iter().find(|c| c.nick == target).cloned()
     }
 
-    pub async fn check_client(&self, addr: SocketAddr) -> bool {
+    pub async fn list_clients(&self) -> Vec<String> {
+        self.connections.lock().await.iter().map(|c| c.nick.to_string()).collect()
+    }
+
+    pub async fn check_by_addr(&self, addr: SocketAddr) -> bool {
         self.connections.lock().await.iter().any(|c| c.addr == addr)
     }
 
-    pub async fn check_nick(&self, nick: &str) -> bool {
+    pub async fn check_by_nick(&self, nick: &str) -> bool {
         self.connections.lock().await.iter().any(|c| c.nick == nick)
-    }
-
-    pub async fn retrieve_client(&self, target: &str) -> Option<Client> {
-        self.connections.lock().await.iter().find(|c| c.nick == target).cloned()
     }
 
     pub async fn set_last_seen(&self, addr: SocketAddr) {

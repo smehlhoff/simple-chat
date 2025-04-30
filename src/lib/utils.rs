@@ -68,7 +68,10 @@ pub async fn set_nick(
             writer.write_all(b"server: nick is too long\n").await?;
             Ok(false)
         } else {
-            if !clients.check_nick(&nick).await {
+            if clients.check_by_nick(&nick).await {
+                writer.write_all(b"server: nick is already taken\n").await?;
+                Ok(false)
+            } else {
                 client.set_nick(&nick);
 
                 clients.add(client.clone()).await;
@@ -77,19 +80,16 @@ pub async fn set_nick(
                     uuid=?Uuid::new_v4(),
                     ip=?client.addr,
                     nick=?client.nick,
-                    "client joined as:  {}", client.nick
+                    "client joined as: {}", client.nick
                 );
 
                 match tx.send(format!("server: {} has joined\n", client.nick)) {
                     Ok(_) => {}
-                    Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send line: {}", e),
+                    Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send broadcast: {}", e),
                 }
 
                 writer.write_all(b"server: welcome to chat\n").await?;
                 Ok(true)
-            } else {
-                writer.write_all(b"server: nick is already taken\n").await?;
-                Ok(false)
             }
         }
     } else {
@@ -113,20 +113,20 @@ pub async fn change_nick(
         } else if nick.len() > 15 {
             writer.write_all(b"server: nick is too long\n").await?;
         } else {
-            if !clients.check_nick(&nick).await {
-                let old_nick = client.nick.clone();
+            if clients.check_by_nick(&nick).await {
+                writer.write_all(b"server: nick is already taken\n").await?;
+            } else {
+                let old_nick = &client.nick.clone();
 
                 client.set_nick(&nick);
 
                 clients.add(client.to_owned()).await;
-                clients.remove_by_nick(&old_nick).await;
+                clients.remove_by_nick(old_nick).await;
 
                 match tx.send(format!("server: {} is now {}\n", old_nick, client.nick)) {
                     Ok(_) => {}
-                    Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send line: {}", e),
+                    Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send broadcast: {}", e),
                 }
-            } else {
-                writer.write_all(b"server: nick is already taken\n").await?;
             }
         }
     } else {
@@ -141,19 +141,19 @@ pub async fn shutdown(
     clients: &Arc<client::Clients>,
     client: client::Client,
 ) -> io::Result<()> {
-    if clients.check_client(client.addr).await {
+    if clients.check_by_addr(client.addr).await {
         match tx.send(format!("server: {} has left\n", client.nick)) {
             Ok(_) => {}
-            Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send line: {}", e),
+            Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send broadcast: {}", e),
         }
     }
 
     clients.remove_by_addr(client.addr).await;
 
-    if !client.nick.is_empty() {
-        info!(uuid=?Uuid::new_v4(), ip=?client.addr, nick=?client.nick, "client disconnected");
-    } else {
+    if client.nick.is_empty() {
         info!(uuid=?Uuid::new_v4(), ip=?client.addr, "client disconnected");
+    } else {
+        info!(uuid=?Uuid::new_v4(), ip=?client.addr, nick=?client.nick, "client disconnected");
     }
 
     Ok(())

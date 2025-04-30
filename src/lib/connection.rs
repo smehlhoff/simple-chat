@@ -71,7 +71,7 @@ pub async fn handle_client(
                     LineResult::Broadcast(line) => {
                         match tx.send(line) {
                             Ok(_) => {},
-                            Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send line: {}", e)
+                            Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send brodcast: {}", e)
                         }
                     }
                     LineResult::Shutdown => {
@@ -86,7 +86,7 @@ pub async fn handle_client(
             msg = rx.recv() => {
                 match msg {
                     Ok(msg) => writer.write_all(msg.as_bytes()).await?,
-                    Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send line: {}", e)
+                    Err(e) => error!(uuid=?Uuid::new_v4(), "unable to send broadcast: {}", e)
                 }
             }
         }
@@ -122,7 +122,7 @@ async fn handle_line(
             } else if token == "/seen" {
                 commands::seen(writer, clients, tokens).await?;
                 Ok(LineResult::NoBroadcast)
-            } else if token == "/quit" {
+            } else if token == "/quit" || token == "/disconnect" {
                 Ok(LineResult::Shutdown)
             } else {
                 writer.write_all(b"server: invalid command\n").await?;

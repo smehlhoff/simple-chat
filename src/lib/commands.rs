@@ -33,6 +33,8 @@ pub async fn nick(
 ) -> io::Result<()> {
     if tokens.len() == 2 {
         utils::change_nick(writer, tx, clients, client, tokens[1]).await?;
+    } else if tokens.len() == 1 {
+        writer.write_all("server: not enough arguments provided\n".to_string().as_bytes()).await?;
     } else {
         writer.write_all("server: too many arguments provided\n".to_string().as_bytes()).await?;
     }
@@ -46,7 +48,7 @@ pub async fn seen(
     tokens: Vec<&str>,
 ) -> io::Result<()> {
     if tokens.len() == 2 {
-        if let Some(target) = clients.retrieve_client(tokens[1]).await {
+        if let Some(target) = clients.retrieve_by_nick(tokens[1]).await {
             match target.last_seen {
                 Some(last_seen) => {
                     let last_seen = last_seen.format("%Y-%m-%d %H:%M").to_string();
@@ -66,6 +68,8 @@ pub async fn seen(
         } else {
             writer.write_all("server: nick not found\n".to_string().as_bytes()).await?;
         }
+    } else if tokens.len() == 1 {
+        writer.write_all("server: not enough arguments provided\n".to_string().as_bytes()).await?;
     } else {
         writer.write_all("server: too many arguments provided\n".to_string().as_bytes()).await?;
     }
